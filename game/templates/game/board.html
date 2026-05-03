@@ -49,6 +49,8 @@
                     style="padding: 10px; border-radius: 5px; border: 1px solid #444; background: #1a1a2e; color: #fff;">
                 <input type="text" id="blackNameInput" placeholder="Black Player Name" 
                     style="padding: 10px; border-radius: 5px; border: 1px solid #444; background: #1a1a2e; color: #fff;">
+                <input type="text" id="fenInput" placeholder="Optional FEN String" 
+                    style="padding: 10px; border-radius: 5px; border: 1px solid #444; background: #1a1a2e; color: #fff;">
             </div>
 
             <div style="display: flex; flex-direction: column; gap: 14px;">
@@ -59,6 +61,8 @@
                 <button class="btn" id="welcomeResumeBtn"
                     style="padding: 12px; font-size: 1.05rem; background: #333; color: #fff; display: none;">Resume
                     Game</button>
+                <button class="btn" id="welcomeCancelBtn"
+                    style="padding: 12px; font-size: 1.05rem; background: #555; color: #fff;">Cancel / Close</button>
             </div>
         </div>
     </div>
@@ -156,6 +160,7 @@
                 <div style="display: flex; flex-direction: column; gap: 8px;">
                     <button class="btn btn-gold" id="newPvPBtn">Pass & Play (PvP)</button>
                     <button class="btn btn-gold" id="newAIBtn">Play vs AI</button>
+                    <button class="btn btn-gold" id="customFenBtn">Custom FEN Game</button>
                     <button class="btn btn-gold" id="copyFenBtn">Copy FEN</button>
                     <button class="btn btn-gold" id="drawBtn" style="display: none;">Offer Draw</button>
                     <button class="btn" id="resignBtn" style="background: #333; color: #fff;">Resign</button>
@@ -279,6 +284,7 @@
 
             const newPvPBtn = document.getElementById('newPvPBtn');
             const newAIBtn = document.getElementById('newAIBtn');
+            const customFenBtn = document.getElementById('customFenBtn');
 
             const gameOverOverlay = document.getElementById('gameOverOverlay');
             const gameOverTitle = document.getElementById('gameOverTitle');
@@ -287,6 +293,7 @@
             const gameOverAIBtn = document.getElementById('gameOverAIBtn');
 
             const resignBtn = document.getElementById('resignBtn');
+            const copyFenBtn = document.getElementById('copyFenBtn');
             const drawBtn = document.getElementById('drawBtn');
             const drawOverlay = document.getElementById('drawOverlay');
             const drawMessage = document.getElementById('drawMessage');
@@ -786,7 +793,17 @@
             }
 
             async function startNewGame(mode) {
-                const d = await post('/api/new-game/', { mode: mode });
+                const body = { mode: mode };
+                const fenEl = document.getElementById('fenInput');
+                if (fenEl && fenEl.value.trim()) {
+                    body.fen = fenEl.value.trim();
+                }
+                const d = await post('/api/new-game/', body);
+                if (d.valid === false) {
+                    alert(d.message);
+                    return false;
+                }
+                if (fenEl) fenEl.value = '';
                 board = d.board;
                 turn = d.current_turn;
                 paused = false;
@@ -797,17 +814,28 @@
                 movesEl.innerHTML = '<span class="placeholder">No moves yet</span>';
                 wCapEl.innerHTML = bCapEl.innerHTML = '';
 
-                loadGame();
+                await loadGame();
+
+                if (gameMode === 'ai' && turn === 'black') {
+                    // Start the AI immediately instead of waiting for player
+                    if (paused) await resumeGame();
+                    setTimeout(requestAIMove, 100);
+                }
+                return true;
             }
 
             /* ==========================================================
             EVENT LISTENERS
             ========================================================== */
-            if (welcomePvPBtn) welcomePvPBtn.onclick = () => { welcomeOverlay.classList.remove('active'); startNewGame('pvp'); };
-            if (welcomeAIBtn) welcomeAIBtn.onclick = () => { welcomeOverlay.classList.remove('active'); startNewGame('ai'); };
+            if (welcomePvPBtn) welcomePvPBtn.onclick = async () => { await startNewGame('pvp'); welcomeOverlay.classList.remove('active'); };
+            if (welcomeAIBtn) welcomeAIBtn.onclick = async () => { await startNewGame('ai'); welcomeOverlay.classList.remove('active'); };
             if (welcomeResumeBtn) welcomeResumeBtn.onclick = () => {
                 welcomeOverlay.classList.remove('active');
                 if (paused) resumeGame();
+            };
+            const welcomeCancelBtn = document.getElementById('welcomeCancelBtn');
+            if (welcomeCancelBtn) welcomeCancelBtn.onclick = () => {
+                welcomeOverlay.classList.remove('active');
             };
 
             if (confirmYesBtn) confirmYesBtn.onclick = () => {
@@ -822,12 +850,34 @@
 
             if (newPvPBtn) newPvPBtn.onclick = () => requestNewGame('pvp');
             if (newAIBtn) newAIBtn.onclick = () => requestNewGame('ai');
+            if (customFenBtn) customFenBtn.onclick = () => {
+                showConfirm(
+                    "Abandon Game?",
+                    "Your current progress will be lost.<br>Are you sure you want to set up a custom game?",
+                    () => { welcomeOverlay.classList.add('active'); },
+                    '#ff6b6b'
+                );
+            };
 
             if (pauseBtn) pauseBtn.onclick = () => paused ? resumeGame() : pauseGame();
 
             if (resignBtn) resignBtn.onclick = () => {
                 if (!gameOver && !paused) {
                     showConfirm("Resign?", "Are you sure you want to resign?", () => endGame('resign', turn));
+                }
+            };
+
+            if (copyFenBtn) copyFenBtn.onclick = async () => {
+                try {
+                    const data = await get('/api/fen/');
+                    if (data.fen_string) {
+                        await navigator.clipboard.writeText(data.fen_string);
+                        const originalText = copyFenBtn.textContent;
+                        copyFenBtn.textContent = 'Copied!';
+                        setTimeout(() => copyFenBtn.textContent = originalText, 2000);
+                    }
+                } catch (e) {
+                    showStatus('Failed to copy FEN.', true);
                 }
             };
 

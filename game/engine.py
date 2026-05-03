@@ -121,6 +121,58 @@ class ChessGame:
         game.valid_moves_cache = {}
         return game
 
+    @classmethod
+    def from_fen(cls, fen_string):
+        """Initialize a new ChessGame instance from a valid FEN string."""
+        game = cls()
+        parts = fen_string.strip().split()
+        if len(parts) < 1:
+            raise ValueError("Empty FEN string.")
+
+        # 1. Parse board placement
+        placement = parts[0]
+        rows = placement.split('/')
+        if len(rows) != 8:
+            raise ValueError("FEN must have exactly 8 rows.")
+
+        board = []
+        for row_str in rows:
+            row = []
+            for char in row_str:
+                if char.isdigit():
+                    row.extend([None] * int(char))
+                else:
+                    if char not in 'prnbqkPRNBQK':
+                        raise ValueError(f"Invalid piece character in FEN: {char}")
+                    row.append(char)
+            if len(row) != 8:
+                raise ValueError("Each row in FEN must have exactly 8 files.")
+            board.append(row)
+        game.board = board
+
+        # 2. Parse active color
+        if len(parts) > 1:
+            color = parts[1].lower()
+            if color == 'w':
+                game.current_turn = 'white'
+            elif color == 'b':
+                game.current_turn = 'black'
+            else:
+                raise ValueError("Active color must be 'w' or 'b'.")
+
+        # 3. Parse castling rights
+        game.castling_rights = {'w_k': False, 'w_q': False, 'b_k': False, 'b_q': False}
+        if len(parts) > 2:
+            castling = parts[2]
+            if castling != '-':
+                if 'K' in castling: game.castling_rights['w_k'] = True
+                if 'Q' in castling: game.castling_rights['w_q'] = True
+                if 'k' in castling: game.castling_rights['b_k'] = True
+                if 'q' in castling: game.castling_rights['b_q'] = True
+
+        game.valid_moves_cache = {}
+        return game
+
     # ------------------------------------------------------------------
     #  C++ engine communication
     # ------------------------------------------------------------------

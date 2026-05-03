@@ -104,7 +104,15 @@ def new_game(request):
     request.session['white_name'] = data.get('white_name', 'White')
     request.session['black_name'] = data.get('black_name', 'Black')
 
-    game = ChessGame()
+    fen = data.get('fen', '').strip()
+    if fen:
+        try:
+            game = ChessGame.from_fen(fen)
+        except ValueError as e:
+            return JsonResponse({'valid': False, 'message': f'Invalid FEN: {str(e)}'}, status=400)
+    else:
+        game = ChessGame()
+
     game.mode = mode
 
     request.session['game'] = game.to_dict()
@@ -180,6 +188,16 @@ def get_state(request):
         'white_name': request.session.get('white_name', 'White'),
         'black_name': request.session.get('black_name', 'Black'),
     })
+
+
+@require_GET
+def get_fen(request):
+    """Return the current FEN string."""
+    game_data = request.session.get('game')
+    if not game_data:
+        return JsonResponse({'fen_string': ''})
+    game = ChessGame.from_dict(game_data)
+    return JsonResponse({'fen_string': game.generate_fen_key()})
 
 
 @require_POST
